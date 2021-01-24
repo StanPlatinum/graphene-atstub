@@ -96,9 +96,7 @@ static long sgx_ocall_cpuid(void* pms) {
     ms_ocall_cpuid_t* ms = (ms_ocall_cpuid_t*)pms;
     ODEBUG(OCALL_CPUID, ms);
     __asm__ volatile("cpuid"
-                     : "=a"(ms->ms_values[0]),
-                       "=b"(ms->ms_values[1]),
-                       "=c"(ms->ms_values[2]),
+                     : "=a"(ms->ms_values[0]), "=b"(ms->ms_values[1]), "=c"(ms->ms_values[2]),
                        "=d"(ms->ms_values[3])
                      : "a"(ms->ms_leaf), "c"(ms->ms_subleaf)
                      : "memory");
@@ -229,7 +227,7 @@ static long sgx_ocall_getdents(void* pms) {
     long ret;
     ODEBUG(OCALL_GETDENTS, ms);
     unsigned int count = ms->ms_size <= UINT_MAX ? ms->ms_size : UINT_MAX;
-    ret = INLINE_SYSCALL(getdents64, 3, ms->ms_fd, ms->ms_dirp, count);
+    ret                = INLINE_SYSCALL(getdents64, 3, ms->ms_fd, ms->ms_dirp, count);
     return ret;
 }
 
@@ -292,7 +290,7 @@ static long sgx_ocall_futex(void* pms) {
     ODEBUG(OCALL_FUTEX, ms);
     struct timespec* ts = NULL;
     if (ms->ms_timeout_us >= 0) {
-        ts = __alloca(sizeof(struct timespec));
+        ts          = __alloca(sizeof(struct timespec));
         ts->tv_sec  = ms->ms_timeout_us / 1000000;
         ts->tv_nsec = (ms->ms_timeout_us - ts->tv_sec * 1000000) * 1000;
     }
@@ -310,10 +308,12 @@ static long sgx_ocall_socketpair(void* pms) {
 }
 
 static long sock_getopt(int fd, struct sockopt* opt) {
-    SGX_DBG(DBG_M, "sock_getopt (fd = %d, sockopt addr = %p) is not implemented \
-            always returns 0\n", fd, opt);
+    SGX_DBG(DBG_M,
+            "sock_getopt (fd = %d, sockopt addr = %p) is not implemented \
+            always returns 0\n",
+            fd, opt);
     /* initialize *opt with constant */
-    *opt = (struct sockopt){0};
+    *opt           = (struct sockopt){0};
     opt->reuseaddr = 1;
     return 0;
 }
@@ -337,8 +337,8 @@ static long sgx_ocall_listen(void* pms) {
 
     /* must set the socket to be reuseable */
     int reuseaddr = 1;
-    ret = INLINE_SYSCALL(setsockopt, 5, fd, SOL_SOCKET, SO_REUSEADDR, &reuseaddr,
-                         sizeof(reuseaddr));
+    ret =
+        INLINE_SYSCALL(setsockopt, 5, fd, SOL_SOCKET, SO_REUSEADDR, &reuseaddr, sizeof(reuseaddr));
     if (IS_ERR(ret))
         goto err_fd;
 
@@ -356,7 +356,7 @@ static long sgx_ocall_listen(void* pms) {
 
     if (ms->ms_addr) {
         int addrlen = ms->ms_addrlen;
-        ret = INLINE_SYSCALL(getsockname, 3, fd, ms->ms_addr, &addrlen);
+        ret         = INLINE_SYSCALL(getsockname, 3, fd, ms->ms_addr, &addrlen);
         if (IS_ERR(ret))
             goto err_fd;
         ms->ms_addrlen = addrlen;
@@ -396,7 +396,7 @@ static long sgx_ocall_accept(void* pms) {
     if (IS_ERR(ret))
         goto err;
 
-    fd = ret;
+    fd  = ret;
     ret = sock_getopt(fd, &ms->ms_sockopt);
     if (IS_ERR(ret))
         goto err_fd;
@@ -461,7 +461,7 @@ static long sgx_ocall_connect(void* pms) {
 
     if (ms->ms_bind_addr && !ms->ms_bind_addr->sa_family) {
         int addrlen = ms->ms_bind_addrlen;
-        ret = INLINE_SYSCALL(getsockname, 3, fd, ms->ms_bind_addr, &addrlen);
+        ret         = INLINE_SYSCALL(getsockname, 3, fd, ms->ms_bind_addr, &addrlen);
         if (IS_ERR(ret))
             goto err_fd;
         ms->ms_bind_addrlen = addrlen;
@@ -583,7 +583,7 @@ static long sgx_ocall_sleep(void* pms) {
         return 0;
     }
     struct timespec req, rem;
-    uint64_t microsec = ms->ms_microsec;
+    uint64_t microsec                   = ms->ms_microsec;
     const uint64_t VERY_LONG_TIME_IN_US = (uint64_t)1000000 * 60 * 60 * 24 * 365 * 128;
     if (ms->ms_microsec > VERY_LONG_TIME_IN_US) {
         /* avoid overflow with time_t */
@@ -606,7 +606,7 @@ static long sgx_ocall_poll(void* pms) {
     ODEBUG(OCALL_POLL, ms);
     struct timespec* ts = NULL;
     if (ms->ms_timeout_us >= 0) {
-        ts = __alloca(sizeof(struct timespec));
+        ts          = __alloca(sizeof(struct timespec));
         ts->tv_sec  = ms->ms_timeout_us / 1000000;
         ts->tv_nsec = (ms->ms_timeout_us - ts->tv_sec * 1000000) * 1000;
     }
@@ -681,47 +681,47 @@ static long sgx_ocall_get_quote(void* pms) {
 }
 
 sgx_ocall_fn_t ocall_table[OCALL_NR] = {
-    [OCALL_EXIT]             = sgx_ocall_exit,
-    [OCALL_MMAP_UNTRUSTED]   = sgx_ocall_mmap_untrusted,
-    [OCALL_MUNMAP_UNTRUSTED] = sgx_ocall_munmap_untrusted,
-    [OCALL_CPUID]            = sgx_ocall_cpuid,
-    [OCALL_OPEN]             = sgx_ocall_open,
-    [OCALL_CLOSE]            = sgx_ocall_close,
-    [OCALL_READ]             = sgx_ocall_read,
-    [OCALL_WRITE]            = sgx_ocall_write,
-    [OCALL_PREAD]            = sgx_ocall_pread,
-    [OCALL_PWRITE]           = sgx_ocall_pwrite,
-    [OCALL_FSTAT]            = sgx_ocall_fstat,
-    [OCALL_FIONREAD]         = sgx_ocall_fionread,
-    [OCALL_FSETNONBLOCK]     = sgx_ocall_fsetnonblock,
-    [OCALL_FCHMOD]           = sgx_ocall_fchmod,
-    [OCALL_FSYNC]            = sgx_ocall_fsync,
-    [OCALL_FTRUNCATE]        = sgx_ocall_ftruncate,
-    [OCALL_MKDIR]            = sgx_ocall_mkdir,
-    [OCALL_GETDENTS]         = sgx_ocall_getdents,
-    [OCALL_RESUME_THREAD]    = sgx_ocall_resume_thread,
-    [OCALL_SCHED_SETAFFINITY]= sgx_ocall_sched_setaffinity,
-    [OCALL_SCHED_GETAFFINITY]= sgx_ocall_sched_getaffinity,
-    [OCALL_CLONE_THREAD]     = sgx_ocall_clone_thread,
-    [OCALL_CREATE_PROCESS]   = sgx_ocall_create_process,
-    [OCALL_FUTEX]            = sgx_ocall_futex,
-    [OCALL_SOCKETPAIR]       = sgx_ocall_socketpair,
-    [OCALL_LISTEN]           = sgx_ocall_listen,
-    [OCALL_ACCEPT]           = sgx_ocall_accept,
-    [OCALL_CONNECT]          = sgx_ocall_connect,
-    [OCALL_RECV]             = sgx_ocall_recv,
-    [OCALL_SEND]             = sgx_ocall_send,
-    [OCALL_SETSOCKOPT]       = sgx_ocall_setsockopt,
-    [OCALL_SHUTDOWN]         = sgx_ocall_shutdown,
-    [OCALL_GETTIME]          = sgx_ocall_gettime,
-    [OCALL_SLEEP]            = sgx_ocall_sleep,
-    [OCALL_POLL]             = sgx_ocall_poll,
-    [OCALL_RENAME]           = sgx_ocall_rename,
-    [OCALL_DELETE]           = sgx_ocall_delete,
-    [OCALL_DEBUG_MAP_ADD]    = sgx_ocall_debug_map_add,
-    [OCALL_DEBUG_MAP_REMOVE] = sgx_ocall_debug_map_remove,
-    [OCALL_EVENTFD]          = sgx_ocall_eventfd,
-    [OCALL_GET_QUOTE]        = sgx_ocall_get_quote,
+    [OCALL_EXIT]              = sgx_ocall_exit,
+    [OCALL_MMAP_UNTRUSTED]    = sgx_ocall_mmap_untrusted,
+    [OCALL_MUNMAP_UNTRUSTED]  = sgx_ocall_munmap_untrusted,
+    [OCALL_CPUID]             = sgx_ocall_cpuid,
+    [OCALL_OPEN]              = sgx_ocall_open,
+    [OCALL_CLOSE]             = sgx_ocall_close,
+    [OCALL_READ]              = sgx_ocall_read,
+    [OCALL_WRITE]             = sgx_ocall_write,
+    [OCALL_PREAD]             = sgx_ocall_pread,
+    [OCALL_PWRITE]            = sgx_ocall_pwrite,
+    [OCALL_FSTAT]             = sgx_ocall_fstat,
+    [OCALL_FIONREAD]          = sgx_ocall_fionread,
+    [OCALL_FSETNONBLOCK]      = sgx_ocall_fsetnonblock,
+    [OCALL_FCHMOD]            = sgx_ocall_fchmod,
+    [OCALL_FSYNC]             = sgx_ocall_fsync,
+    [OCALL_FTRUNCATE]         = sgx_ocall_ftruncate,
+    [OCALL_MKDIR]             = sgx_ocall_mkdir,
+    [OCALL_GETDENTS]          = sgx_ocall_getdents,
+    [OCALL_RESUME_THREAD]     = sgx_ocall_resume_thread,
+    [OCALL_SCHED_SETAFFINITY] = sgx_ocall_sched_setaffinity,
+    [OCALL_SCHED_GETAFFINITY] = sgx_ocall_sched_getaffinity,
+    [OCALL_CLONE_THREAD]      = sgx_ocall_clone_thread,
+    [OCALL_CREATE_PROCESS]    = sgx_ocall_create_process,
+    [OCALL_FUTEX]             = sgx_ocall_futex,
+    [OCALL_SOCKETPAIR]        = sgx_ocall_socketpair,
+    [OCALL_LISTEN]            = sgx_ocall_listen,
+    [OCALL_ACCEPT]            = sgx_ocall_accept,
+    [OCALL_CONNECT]           = sgx_ocall_connect,
+    [OCALL_RECV]              = sgx_ocall_recv,
+    [OCALL_SEND]              = sgx_ocall_send,
+    [OCALL_SETSOCKOPT]        = sgx_ocall_setsockopt,
+    [OCALL_SHUTDOWN]          = sgx_ocall_shutdown,
+    [OCALL_GETTIME]           = sgx_ocall_gettime,
+    [OCALL_SLEEP]             = sgx_ocall_sleep,
+    [OCALL_POLL]              = sgx_ocall_poll,
+    [OCALL_RENAME]            = sgx_ocall_rename,
+    [OCALL_DELETE]            = sgx_ocall_delete,
+    [OCALL_DEBUG_MAP_ADD]     = sgx_ocall_debug_map_add,
+    [OCALL_DEBUG_MAP_REMOVE]  = sgx_ocall_debug_map_remove,
+    [OCALL_EVENTFD]           = sgx_ocall_eventfd,
+    [OCALL_GET_QUOTE]         = sgx_ocall_get_quote,
 };
 
 #define EDEBUG(code, ms) \
@@ -775,15 +775,15 @@ static int rpc_thread_loop(void* arg) {
 
         /* call actual function and notify awaiting enclave thread when done */
         sgx_ocall_fn_t f = ocall_table[req->ocall_index];
-        req->result = f(req->buffer);
+        req->result      = f(req->buffer);
 
         /* this code is based on Mutex 2 from Futexes are Tricky */
         int old_lock_state = __atomic_fetch_sub(&req->lock.lock, 1, __ATOMIC_ACQ_REL);
         if (old_lock_state == SPINLOCK_LOCKED_WITH_WAITERS) {
             /* must unlock and wake waiters */
             spinlock_unlock(&req->lock);
-            int ret = INLINE_SYSCALL(futex, 6, &req->lock.lock, FUTEX_WAKE_PRIVATE,
-                                     1, NULL, NULL, 0);
+            int ret =
+                INLINE_SYSCALL(futex, 6, &req->lock.lock, FUTEX_WAKE_PRIVATE, 1, NULL, NULL, 0);
             if (ret == -1)
                 SGX_DBG(DBG_E, "RPC thread failed to wake up enclave thread\n");
         }
@@ -794,10 +794,9 @@ static int rpc_thread_loop(void* arg) {
 }
 
 static int start_rpc(size_t num_of_threads) {
-    g_rpc_queue = (rpc_queue_t*)INLINE_SYSCALL(mmap, 6, NULL,
-                                               ALIGN_UP(sizeof(rpc_queue_t), PRESET_PAGESIZE),
-                                               PROT_READ | PROT_WRITE,
-                                               MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
+    g_rpc_queue =
+        (rpc_queue_t*)INLINE_SYSCALL(mmap, 6, NULL, ALIGN_UP(sizeof(rpc_queue_t), PRESET_PAGESIZE),
+                                     PROT_READ | PROT_WRITE, MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
     if (IS_ERR_P(g_rpc_queue))
         return -ENOMEM;
 
@@ -811,12 +810,12 @@ static int start_rpc(size_t num_of_threads) {
             return -ENOMEM;
 
         void* child_stack_top = stack + RPC_STACK_SIZE;
-        child_stack_top = ALIGN_DOWN_PTR(child_stack_top, 16);
+        child_stack_top       = ALIGN_DOWN_PTR(child_stack_top, 16);
 
         int dummy_parent_tid_field = 0;
-        int ret = clone(rpc_thread_loop, child_stack_top,
-                        CLONE_VM | CLONE_FS | CLONE_FILES | CLONE_SYSVSEM |
-                        CLONE_THREAD | CLONE_SIGHAND | CLONE_PTRACE | CLONE_PARENT_SETTID,
+        int ret                    = clone(rpc_thread_loop, child_stack_top,
+                        CLONE_VM | CLONE_FS | CLONE_FILES | CLONE_SYSVSEM | CLONE_THREAD |
+                            CLONE_SIGHAND | CLONE_PTRACE | CLONE_PARENT_SETTID,
                         NULL, &dummy_parent_tid_field, NULL);
 
         if (IS_ERR(ret)) {
@@ -861,6 +860,9 @@ int ecall_enclave_start(char* libpal_uri, char* args, size_t args_size, char* en
     ms.ms_sec_info       = &g_pal_enclave.pal_sec;
     ms.rpc_queue         = g_rpc_queue;
     EDEBUG(ECALL_ENCLAVE_START, &ms);
+    
+    SGX_DBG(DBG_E, "Entering ecall_enclave_start...\n");
+
     return sgx_ecall(ECALL_ENCLAVE_START, &ms);
 }
 
