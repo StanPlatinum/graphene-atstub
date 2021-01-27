@@ -536,6 +536,12 @@ struct parser_table {
     [__NR_recvmmsg] = {.slow = false, .name = "recvmmsg", .parser = {parse_long_arg,
                        parse_integer_arg, parse_pointer_arg, parse_integer_arg, parse_integer_arg,
                        parse_pointer_arg}},
+    [__NR_prlimit64] = {.slow = false, .name = "prlimit64", .parser = {parse_long_arg,
+                        parse_integer_arg, parse_integer_arg, parse_pointer_arg,
+                        parse_pointer_arg}},
+    [__NR_sendmmsg] = {.slow = false, .name = "sendmmsg", .parser = {parse_long_arg,
+                       parse_integer_arg, parse_pointer_arg, parse_integer_arg, parse_integer_arg,
+                       parse_pointer_arg}},
     [__NR_getcpu] = {.slow = false, .name = "getcpu", .parser = {parse_long_arg, parse_pointer_arg,
                      parse_pointer_arg, parse_pointer_arg}},
     [__NR_process_vm_readv] = {.slow = false, .name = "process_vm_readv", .parser = {NULL}},
@@ -1541,7 +1547,7 @@ static void print_syscall_name(const char* name, int sysno) {
 }
 
 void debug_print_syscall_before(int sysno, ...) {
-    if (g_log_level < PAL_LOG_INFO)
+    if (g_log_level < PAL_LOG_DEBUG)
         return;
 
     struct parser_table* parser = &syscall_parser_table[sysno];
@@ -1573,7 +1579,7 @@ void debug_print_syscall_before(int sysno, ...) {
 }
 
 void debug_print_syscall_after(int sysno, ...) {
-    if (g_log_level < PAL_LOG_INFO)
+    if (g_log_level < PAL_LOG_DEBUG)
         return;
 
     struct parser_table* parser = &syscall_parser_table[sysno];

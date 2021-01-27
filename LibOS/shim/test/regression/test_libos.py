@@ -224,8 +224,8 @@ class TC_01_Bootstrap(RegressionTestCase):
         self.assertIn('FE_TOWARDZERO parent: 42.5 = 42.0, -42.5 = -42.0', stdout)
 
     def test_700_debug_log_inline(self):
-        stdout, _ = self.run_binary(['debug_log_inline'])
-        self._verify_debug_log(stdout)
+        _, stderr = self.run_binary(['debug_log_inline'])
+        self._verify_debug_log(stderr)
 
     def test_701_debug_log_file(self):
         log_path = 'tmp/debug_log_file.log'
@@ -580,6 +580,7 @@ class TC_40_FileSystem(RegressionTestCase):
         self.assertIn('/dev/stdout', stdout)
         self.assertIn('/dev/stderr', stdout)
         self.assertIn('Four bytes from /dev/urandom', stdout)
+        self.assertIn('TEST OK', stdout)
 
     def test_002_device(self):
         stdout, _ = self.run_binary(['device'])

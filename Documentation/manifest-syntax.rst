@@ -28,16 +28,29 @@ Log level
 
 ::
 
-    loader.log_level = "[none|error|info|debug|trace|all]"
+    loader.log_level = "[none|error|warning|debug|trace|all]"
     (Default: "error")
 
     loader.log_file = "[PATH]"
 
 This configures Graphene's debug log. The ``log_level`` option specifies what
 messages to enable (e.g. ``loader.log_level = "debug"`` will enable all messages
-of type ``error``, ``info`` and ``debug``). By default, the messages are printed
-to the standard output. If ``log_file`` is specified, the messages will be
+of type ``error``, ``warning`` and ``debug``). By default, the messages are printed
+to the standard error. If ``log_file`` is specified, the messages will be
 appended to that file.
+
+Graphene outputs log messages of the following types:
+
+* ``error``: A serious error preventing Graphene from operating properly (for
+  example, error initializing one of the components).
+
+* ``warning``: A non-fatal issue. Might mean that application is requesting
+  something unsupported or poorly emulated.
+
+* ``debug``: Detailed information about Graphene's operation and internals.
+
+* ``trace``: More detailed information, such as all system calls requested by
+  the application. Might contain a lot of noise.
 
 Preloaded libraries
 ^^^^^^^^^^^^^^^^^^^
@@ -142,6 +155,22 @@ Disabling ASLR
 This specifies whether to disable Address Space Layout Randomization (ASLR).
 Since disabling ASLR worsens security of the application, ASLR is enabled by
 default.
+
+Check invalid pointers
+^^^^^^^^^^^^^^^^^^^^^^
+
+::
+
+    libos.check_invalid_pointers = [1|0]
+    (Default: 1)
+
+This specifies whether to enable checks of invalid pointers on syscall
+invocations. In particular, when this manifest option is set to ``1``,
+Graphene's LibOS will return an EFAULT error code if a user-supplied buffer
+points to an invalid memory region. Setting this manifest option to ``0`` may
+improve performance for certain workloads but may also generate
+``SIGSEGV/SIGBUS`` exceptions for some applications that specifically use
+invalid pointers (though this is not expected for most real-world applications).
 
 Graphene internal metadata size
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
