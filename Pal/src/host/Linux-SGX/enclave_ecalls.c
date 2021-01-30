@@ -59,9 +59,7 @@ static int verify_and_init_rpc_queue(rpc_queue_t* untrusted_rpc_queue) {
  *      Trusted.
  */
 void handle_ecall(long ecall_index, void* ecall_args, void* exit_target, void* enclave_base_addr) {
-    
-    SGX_DBG(DBG_E, "Handling ecall...\n");
-    
+       
     if (ecall_index < 0 || ecall_index >= ECALL_NR)
         return;
 
