@@ -309,15 +309,8 @@ static long sgx_ocall_socketpair(void* pms) {
 }
 
 static long sock_getopt(int fd, struct sockopt* opt) {
-<<<<<<< HEAD
-    SGX_DBG(DBG_M,
-            "sock_getopt (fd = %d, sockopt addr = %p) is not implemented \
-            always returns 0\n",
-            fd, opt);
-=======
     urts_log_debug("sock_getopt (fd = %d, sockopt addr = %p) is not implemented "
                    "and always returns 0\n", fd, opt);
->>>>>>> upstream/master
     /* initialize *opt with constant */
     *opt           = (struct sockopt){0};
     opt->reuseaddr = 1;
