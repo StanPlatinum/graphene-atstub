@@ -65,27 +65,21 @@ int la_init(void) {
     __sgx_mem_aligned sgx_report_t report;
     memset(&report, 0, sizeof(report));
     memset(&target_info, 0, sizeof(target_info));
-
     memcpy(&target_info.mr_enclave, &g_pal_sec.mr_enclave, sizeof(sgx_measurement_t));
     memcpy(&target_info.attributes, &g_pal_sec.enclave_attributes, sizeof(sgx_attributes_t));
 
     int fd[2];
-
     int ret = ocall_socketpair(AF_UNIX, SOCK_STREAM, 0, fd);
     if (ret) {
         log_error("ocall_socketpair failed: ret = %d)\n", ret);
     }
 
     struct sockaddr_un addr = {AF_UNIX, "/tmp/LA.socket"};
-    // addr.sun_family = AF_UNIX;
-    // addr.sun_path = "/tmp/LA.socket";
-
     struct sockopt sock_options;
     unsigned int addrlen = sizeof(struct sockaddr_un);
-
-    ret = ocall_connect(AF_UNIX, SOCK_STREAM, 0, /*ipv6_v6only=*/0,
+    int fd_ret = ocall_connect(AF_UNIX, SOCK_STREAM, 0, /*ipv6_v6only=*/0,
                         (const struct sockaddr*)&addr, addrlen, NULL, NULL, &sock_options);
-    if (ret) {
+    if (fd_ret < 0) {
         log_error("ocall_connect failed: ret = %d)\n", ret);
     }
 
@@ -94,9 +88,16 @@ int la_init(void) {
         log_error("sgx_report failed: ret = %d)\n", ret);
         return -PAL_ERROR_DENIED;
     }
+    // my_print_report(&report);
 
-    my_print_report(&report);
-
+    ssize_t bytes;
+    char* buffer = "Send test!";
+    int len = 11;
+    bytes = ocall_send(fd_ret, buffer, len, NULL, 0, NULL, 0);
+    if (bytes < 0) {
+        log_error("ocall_send failed: ret = %d)\n", ret);
+    }
+    log_error("Message sent.\n");
     return 0;
 };
 
@@ -142,9 +143,6 @@ void handle_ecall(long ecall_index, void* ecall_args, void* exit_target, void* e
     SET_ENCLAVE_TLS(ustack_top, ursp);
     SET_ENCLAVE_TLS(clear_child_tid, NULL);
     SET_ENCLAVE_TLS(untrusted_area_cache.in_use, 0UL);
-
-    /* Test */
-    log_error("Test\n");
 
     int la_rv = la_init();
     if (la_rv) {
