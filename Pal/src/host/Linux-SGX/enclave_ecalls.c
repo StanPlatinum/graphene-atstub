@@ -55,6 +55,8 @@ static void my_print_report(sgx_report_t* r) {
 
 /*
  */
+#define MAX_RECV_BUF 2048
+
 int la_init(void) {
 
     // log_error("mkdir...\n");
@@ -68,11 +70,11 @@ int la_init(void) {
     memcpy(&target_info.mr_enclave, &g_pal_sec.mr_enclave, sizeof(sgx_measurement_t));
     memcpy(&target_info.attributes, &g_pal_sec.enclave_attributes, sizeof(sgx_attributes_t));
 
-    int fd[2];
-    int ret = ocall_socketpair(AF_UNIX, SOCK_STREAM, 0, fd);
-    if (ret) {
-        log_error("ocall_socketpair failed: ret = %d)\n", ret);
-    }
+    // int fd[2];
+    // int ret = ocall_socketpair(AF_UNIX, SOCK_STREAM, 0, fd);
+    // if (ret) {
+    //     log_error("ocall_socketpair failed: ret = %d)\n", ret);
+    // }
 
     struct sockaddr_un addr = {AF_UNIX, "/tmp/LA.socket"};
     struct sockopt sock_options;
@@ -80,10 +82,10 @@ int la_init(void) {
     int fd_ret = ocall_connect(AF_UNIX, SOCK_STREAM, 0, /*ipv6_v6only=*/0,
                         (const struct sockaddr*)&addr, addrlen, NULL, NULL, &sock_options);
     if (fd_ret < 0) {
-        log_error("ocall_connect failed: ret = %d)\n", ret);
+        log_error("ocall_connect failed: fd_ret = %d)\n", fd_ret);
     }
 
-    ret = sgx_report(&target_info, &report_data, &report);
+    int ret = sgx_report(&target_info, &report_data, &report);
     if (ret) {
         log_error("sgx_report failed: ret = %d)\n", ret);
         return -PAL_ERROR_DENIED;
@@ -91,13 +93,20 @@ int la_init(void) {
     // my_print_report(&report);
 
     ssize_t bytes;
-    char* buffer = "Send test!";
+    char* buffer = "Msg_0!";
     int len = 11;
     bytes = ocall_send(fd_ret, buffer, len, NULL, 0, NULL, 0);
     if (bytes < 0) {
-        log_error("ocall_send failed: ret = %d)\n", ret);
+        log_error("ocall_send failed: bytes = %d)\n", bytes);
     }
     log_error("Message sent.\n");
+
+    char recv_buf[MAX_RECV_BUF] = {0};
+    bytes = ocall_recv(fd_ret, recv_buf, MAX_RECV_BUF, NULL, NULL, NULL, NULL);
+    if (bytes < 0) {
+        log_error("ocall_send failed: bytes = %d)\n", bytes);
+    }
+    log_error("%s recved.\n", recv_buf);
     return 0;
 };
 
