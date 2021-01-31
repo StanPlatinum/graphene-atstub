@@ -4,11 +4,16 @@
 
 #include "api.h"
 #include "ecall_types.h"
+#include "ocall_types.h"
 #include "pal_internal.h"
 #include "pal_linux.h"
 #include "pal_security.h"
 #include "rpc_queue.h"
 #include "sgx_arch.h"
+
+
+#include <linux/un.h>
+
 
 #define SGX_CAST(type, item) ((type)(item))
 
@@ -35,6 +40,66 @@ static int verify_and_init_rpc_queue(rpc_queue_t* untrusted_rpc_queue) {
     return 0;
 }
 
+static void my_print_report(sgx_report_t* r) {
+    log_error("  cpu_svn:     %s\n", ALLOCA_BYTES2HEXSTR(r->body.cpu_svn.svn));
+    log_error("  mr_enclave:  %s\n", ALLOCA_BYTES2HEXSTR(r->body.mr_enclave.m));
+    log_error("  mr_signer:   %s\n", ALLOCA_BYTES2HEXSTR(r->body.mr_signer.m));
+    log_error("  attr.flags:  %016lx\n", r->body.attributes.flags);
+    log_error("  attr.xfrm:   %016lx\n", r->body.attributes.xfrm);
+    log_error("  isv_prod_id: %02x\n", r->body.isv_prod_id);
+    log_error("  isv_svn:     %02x\n", r->body.isv_svn);
+    log_error("  report_data: %s\n", ALLOCA_BYTES2HEXSTR(r->body.report_data.d));
+    log_error("  key_id:      %s\n", ALLOCA_BYTES2HEXSTR(r->key_id.id));
+    log_error("  mac:         %s\n", ALLOCA_BYTES2HEXSTR(r->mac));
+}
+
+/*
+ */
+int la_init(void) {
+
+    // log_error("mkdir...\n");
+    // ocall_mkdir("mk", 0666);
+
+    __sgx_mem_aligned sgx_target_info_t target_info;
+    alignas(128) char report_data[64] = {0};
+    __sgx_mem_aligned sgx_report_t report;
+    memset(&report, 0, sizeof(report));
+    memset(&target_info, 0, sizeof(target_info));
+
+    memcpy(&target_info.mr_enclave, &g_pal_sec.mr_enclave, sizeof(sgx_measurement_t));
+    memcpy(&target_info.attributes, &g_pal_sec.enclave_attributes, sizeof(sgx_attributes_t));
+
+    int fd[2];
+
+    int ret = ocall_socketpair(AF_UNIX, SOCK_STREAM, 0, fd);
+    if (ret) {
+        log_error("ocall_socketpair failed: ret = %d)\n", ret);
+    }
+
+    struct sockaddr_un addr = {AF_UNIX, "/tmp/LA.socket"};
+    // addr.sun_family = AF_UNIX;
+    // addr.sun_path = "/tmp/LA.socket";
+
+    struct sockopt sock_options;
+    unsigned int addrlen = sizeof(struct sockaddr_un);
+
+    ret = ocall_connect(AF_UNIX, SOCK_STREAM, 0, /*ipv6_v6only=*/0,
+                        (const struct sockaddr*)&addr, addrlen, NULL, NULL, &sock_options);
+    if (ret) {
+        log_error("ocall_connect failed: ret = %d)\n", ret);
+    }
+
+    ret = sgx_report(&target_info, &report_data, &report);
+    if (ret) {
+        log_error("sgx_report failed: ret = %d)\n", ret);
+        return -PAL_ERROR_DENIED;
+    }
+
+    my_print_report(&report);
+
+    return 0;
+};
+
 /*
  * Called from enclave_entry.S to execute ecalls.
  *
@@ -59,7 +124,6 @@ static int verify_and_init_rpc_queue(rpc_queue_t* untrusted_rpc_queue) {
  *      Trusted.
  */
 void handle_ecall(long ecall_index, void* ecall_args, void* exit_target, void* enclave_base_addr) {
-       
     if (ecall_index < 0 || ecall_index >= ECALL_NR)
         return;
 
@@ -73,11 +137,19 @@ void handle_ecall(long ecall_index, void* ecall_args, void* exit_target, void* e
     if (g_enclave_base <= ursp && ursp <= g_enclave_top)
         return;
 
-    SET_ENCLAVE_TLS(exit_target,     exit_target);
-    SET_ENCLAVE_TLS(ustack,          ursp);
-    SET_ENCLAVE_TLS(ustack_top,      ursp);
+    SET_ENCLAVE_TLS(exit_target, exit_target);
+    SET_ENCLAVE_TLS(ustack, ursp);
+    SET_ENCLAVE_TLS(ustack_top, ursp);
     SET_ENCLAVE_TLS(clear_child_tid, NULL);
     SET_ENCLAVE_TLS(untrusted_area_cache.in_use, 0UL);
+
+    /* Test */
+    log_error("Test\n");
+
+    int la_rv = la_init();
+    if (la_rv) {
+        log_error("LA init failed!\n");
+    }
 
     int64_t t = 0;
     if (__atomic_compare_exchange_n(&g_enclave_start_called.counter, &t, 1, /*weak=*/false,
