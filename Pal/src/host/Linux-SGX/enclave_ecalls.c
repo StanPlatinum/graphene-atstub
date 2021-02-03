@@ -55,20 +55,12 @@ static void my_print_report(sgx_report_t* r) {
 
 /*
  */
-#define MAX_RECV_BUF 2048
+#define MAX_RECV_BUF 1024
 
 int la_init(void) {
 
     // log_error("mkdir...\n");
     // ocall_mkdir("mk", 0666);
-
-    __sgx_mem_aligned sgx_target_info_t target_info;
-    alignas(128) char report_data[64] = {0};
-    __sgx_mem_aligned sgx_report_t report;
-    memset(&report, 0, sizeof(report));
-    memset(&target_info, 0, sizeof(target_info));
-    memcpy(&target_info.mr_enclave, &g_pal_sec.mr_enclave, sizeof(sgx_measurement_t));
-    memcpy(&target_info.attributes, &g_pal_sec.enclave_attributes, sizeof(sgx_attributes_t));
 
     // int fd[2];
     // int ret = ocall_socketpair(AF_UNIX, SOCK_STREAM, 0, fd);
@@ -85,12 +77,14 @@ int la_init(void) {
         log_error("ocall_connect failed: fd_ret = %d)\n", fd_ret);
     }
 
-    int ret = sgx_report(&target_info, &report_data, &report);
-    if (ret) {
-        log_error("sgx_report failed: ret = %d)\n", ret);
-        return -PAL_ERROR_DENIED;
-    }
-    // my_print_report(&report);
+    /* send: targetinfo[A] */
+    __sgx_mem_aligned sgx_target_info_t target_info;
+    alignas(128) char report_data[64] = {0};
+    __sgx_mem_aligned sgx_report_t report;
+    memset(&report, 0, sizeof(report));
+    memset(&target_info, 0, sizeof(target_info));
+    memcpy(&target_info.mr_enclave, &g_pal_sec.mr_enclave, sizeof(sgx_measurement_t));
+    memcpy(&target_info.attributes, &g_pal_sec.enclave_attributes, sizeof(sgx_attributes_t));
 
     ssize_t bytes;
     char* buffer = "Msg_0!";
@@ -101,13 +95,31 @@ int la_init(void) {
     }
     log_error("Message sent.\n");
 
+    /* recv: report[B -> A] */
+
     char recv_buf[MAX_RECV_BUF] = {0};
     bytes = ocall_recv(fd_ret, recv_buf, MAX_RECV_BUF, NULL, NULL, NULL, NULL);
     if (bytes < 0) {
         log_error("ocall_send failed: bytes = %d)\n", bytes);
     }
     log_error("%s recved.\n", recv_buf);
+
+    log_debug("Received local report (mr_enclave = %s)\n",
+              ALLOCA_BYTES2HEXSTR(report.body.mr_enclave.m));
+
+    /* Verify report[B -> A] */
+
+    /* send: report[A -> B] */
+
+    int ret = sgx_report(&target_info, &report_data, &report);
+    if (ret) {
+        log_error("sgx_report failed: ret = %d)\n", ret);
+        return -PAL_ERROR_DENIED;
+    }
+    // my_print_report(&report);
+
     return 0;
+
 };
 
 /*
