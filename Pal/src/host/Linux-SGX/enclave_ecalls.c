@@ -13,6 +13,9 @@
 
 
 #include <linux/un.h>
+/* WL: Length should be finalized when DH is imported. */
+#define MAX_SEND_BUF 1024
+#define MAX_RECV_BUF 1024
 
 
 #define SGX_CAST(type, item) ((type)(item))
@@ -21,6 +24,7 @@ extern void* g_enclave_base;
 extern void* g_enclave_top;
 
 static struct atomic_int g_enclave_start_called = ATOMIC_INIT(0);
+
 
 /* returns 0 if rpc_queue is valid/not requested, otherwise -1 */
 static int verify_and_init_rpc_queue(rpc_queue_t* untrusted_rpc_queue) {
@@ -53,10 +57,6 @@ static void my_print_report(sgx_report_t* r) {
     log_error("  mac:         %s\n", ALLOCA_BYTES2HEXSTR(r->mac));
 }
 
-/*
- */
-#define MAX_RECV_BUF 1024
-
 int la_init(void) {
 
     // log_error("mkdir...\n");
@@ -68,7 +68,9 @@ int la_init(void) {
     //     log_error("ocall_socketpair failed: ret = %d)\n", ret);
     // }
 
-    struct sockaddr_un addr = {AF_UNIX, "/tmp/LA.socket"};
+    log_error("Connecting LAS...\n");
+
+    struct sockaddr_un addr = {AF_UNIX, "/u/weijliu/LA.socket"};
     struct sockopt sock_options;
     unsigned int addrlen = sizeof(struct sockaddr_un);
     int fd_ret = ocall_connect(AF_UNIX, SOCK_STREAM, 0, /*ipv6_v6only=*/0,
@@ -78,45 +80,80 @@ int la_init(void) {
     }
 
     /* send: targetinfo[A] */
-    __sgx_mem_aligned sgx_target_info_t target_info;
+
+    log_error("Sending msg0...\n");
+
     alignas(128) char report_data[64] = {0};
     __sgx_mem_aligned sgx_report_t report;
     memset(&report, 0, sizeof(report));
+
+    __sgx_mem_aligned sgx_target_info_t target_info;
     memset(&target_info, 0, sizeof(target_info));
     memcpy(&target_info.mr_enclave, &g_pal_sec.mr_enclave, sizeof(sgx_measurement_t));
     memcpy(&target_info.attributes, &g_pal_sec.enclave_attributes, sizeof(sgx_attributes_t));
 
+    // We use MAX_RECV_BUF as every packet length. 
+    // This value should be synced between the sender and the receiver.
     ssize_t bytes;
-    char* buffer = "Msg_0!";
-    int len = 11;
-    bytes = ocall_send(fd_ret, buffer, len, NULL, 0, NULL, 0);
+    int len = sizeof(sgx_target_info_t);
+    char send_buf[MAX_SEND_BUF] = {0};
+    memcpy(&send_buf, &target_info, len);
+    log_error("Msg0 actual length: %d\n", len);
+    log_error("target_info's mr_enclave: %s\n", ALLOCA_BYTES2HEXSTR(target_info.mr_enclave.m));
+    log_error("target_info's attr.flag: %016lx\n", target_info.attributes.flags);
+    log_error("target_info's attr.xfrm: %016lx\n", target_info.attributes.xfrm);
+  
+    bytes = ocall_send(fd_ret, send_buf, MAX_SEND_BUF, NULL, 0, NULL, 0);
     if (bytes < 0) {
         log_error("ocall_send failed: bytes = %d)\n", bytes);
     }
-    log_error("Message sent.\n");
+    else {
+        log_error("Msg0 sent.\n");
+    }
+    // clean up
+    memset(&send_buf, 0, sizeof(send_buf));
 
     /* recv: report[B -> A] */
 
     char recv_buf[MAX_RECV_BUF] = {0};
     bytes = ocall_recv(fd_ret, recv_buf, MAX_RECV_BUF, NULL, NULL, NULL, NULL);
-    if (bytes < 0) {
-        log_error("ocall_send failed: bytes = %d)\n", bytes);
-    }
-    log_error("%s recved.\n", recv_buf);
 
-    log_debug("Received local report (mr_enclave = %s)\n",
-              ALLOCA_BYTES2HEXSTR(report.body.mr_enclave.m));
+    // assume here we only recv a sgx_report_t
+    sgx_report_t recv_report;
+    memcpy(&recv_report, &recv_buf, sizeof(sgx_report_t));
+
+    if (bytes < 0) {
+        log_error("ocall_recv failed: bytes = %d)\n", bytes);
+    }
+    else {
+        log_error("Msg1 received...\n");
+        log_error("Received local report (mr_enclave = %s)\n",
+              ALLOCA_BYTES2HEXSTR(recv_report.body.mr_enclave.m));
+    }
+
+    log_error("Verifying report...\n");
 
     /* Verify report[B -> A] */
-
-    /* send: report[A -> B] */
 
     int ret = sgx_report(&target_info, &report_data, &report);
     if (ret) {
         log_error("sgx_report failed: ret = %d)\n", ret);
         return -PAL_ERROR_DENIED;
     }
-    // my_print_report(&report);
+    my_print_report(&report);
+
+    /* send: report[A -> B] */
+
+    log_error("Sending msg2...\n");
+    memcpy(&send_buf, &report, sizeof(sgx_report_t));
+
+    bytes = ocall_send(fd_ret, send_buf, MAX_SEND_BUF, NULL, 0, NULL, 0);
+    if (bytes < 0) {
+        log_error("ocall_send failed: bytes = %d)\n", bytes);
+    }
+    else {
+        log_error("Msg2 sent.\n");
+    }
 
     return 0;
 
