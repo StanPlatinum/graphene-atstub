@@ -16,7 +16,8 @@
 /* WL: Length should be finalized when DH is imported. */
 #define MAX_SEND_BUF 1024
 #define MAX_RECV_BUF 1024
-
+#define SGX_AESGCM_KEY_SIZE 16
+typedef uint8_t sgx_aes_gcm_128bit_key_t[SGX_AESGCM_KEY_SIZE];
 
 #define SGX_CAST(type, item) ((type)(item))
 
@@ -45,6 +46,7 @@ static int verify_and_init_rpc_queue(rpc_queue_t* untrusted_rpc_queue) {
 }
 
 static void my_print_report(sgx_report_t* r) {
+    log_error("Printing report...\n");
     log_error("  cpu_svn:     %s\n", ALLOCA_BYTES2HEXSTR(r->body.cpu_svn.svn));
     log_error("  mr_enclave:  %s\n", ALLOCA_BYTES2HEXSTR(r->body.mr_enclave.m));
     log_error("  mr_signer:   %s\n", ALLOCA_BYTES2HEXSTR(r->body.mr_signer.m));
@@ -59,15 +61,6 @@ static void my_print_report(sgx_report_t* r) {
 
 int la_init(void) {
 
-    // log_error("mkdir...\n");
-    // ocall_mkdir("mk", 0666);
-
-    // int fd[2];
-    // int ret = ocall_socketpair(AF_UNIX, SOCK_STREAM, 0, fd);
-    // if (ret) {
-    //     log_error("ocall_socketpair failed: ret = %d)\n", ret);
-    // }
-
     log_error("Connecting LAS...\n");
 
     struct sockaddr_un addr = {AF_UNIX, "/u/weijliu/LA.socket"};
@@ -79,18 +72,21 @@ int la_init(void) {
         log_error("ocall_connect failed: fd_ret = %d)\n", fd_ret);
     }
 
-    /* send: targetinfo[A] */
+    /* Send: targetinfo[A] */
 
     log_error("Sending msg0...\n");
-
-    alignas(128) char report_data[64] = {0};
-    __sgx_mem_aligned sgx_report_t report;
-    memset(&report, 0, sizeof(report));
 
     __sgx_mem_aligned sgx_target_info_t target_info;
     memset(&target_info, 0, sizeof(target_info));
     memcpy(&target_info.mr_enclave, &g_pal_sec.mr_enclave, sizeof(sgx_measurement_t));
     memcpy(&target_info.attributes, &g_pal_sec.enclave_attributes, sizeof(sgx_attributes_t));
+
+    alignas(128) char report_data[64] = {0};
+    __sgx_mem_aligned sgx_report_t report;
+    memset(&report, 0, sizeof(report));
+
+    sgx_aes_gcm_128bit_key_t recv_key;
+    memset(&recv_key, 0, sizeof(recv_key));
 
     // We use MAX_RECV_BUF as every packet length. 
     // This value should be synced between the sender and the receiver.
@@ -113,7 +109,7 @@ int la_init(void) {
     // clean up
     memset(&send_buf, 0, sizeof(send_buf));
 
-    /* recv: report[B -> A] */
+    /* Receive: report[B -> A] */
 
     char recv_buf[MAX_RECV_BUF] = {0};
     bytes = ocall_recv(fd_ret, recv_buf, MAX_RECV_BUF, NULL, NULL, NULL, NULL);
@@ -127,6 +123,8 @@ int la_init(void) {
     }
     else {
         log_error("Msg1 received...\n");
+        log_error("Received local report (mr_signer = %s)\n",
+              ALLOCA_BYTES2HEXSTR(recv_report.body.mr_signer.m));
         log_error("Received local report (mr_enclave = %s)\n",
               ALLOCA_BYTES2HEXSTR(recv_report.body.mr_enclave.m));
     }
@@ -138,11 +136,12 @@ int la_init(void) {
     int ret = sgx_report(&target_info, &report_data, &report);
     if (ret) {
         log_error("sgx_report failed: ret = %d)\n", ret);
+        //We return here since something inside SGX is wrong...
         return -PAL_ERROR_DENIED;
     }
     my_print_report(&report);
 
-    /* send: report[A -> B] */
+    /* Send: report[A -> B] */
 
     log_error("Sending msg2...\n");
     memcpy(&send_buf, &report, sizeof(sgx_report_t));
@@ -152,9 +151,26 @@ int la_init(void) {
         log_error("ocall_send failed: bytes = %d)\n", bytes);
     }
     else {
-        log_error("Msg2 sent.\n");
+        log_error("Msg2 sent. This side of attestation, done.\n");
     }
 
+    /* Receive: key[A -> B] */
+
+    log_error("Receiving msg3...\n");
+    // clean up
+    memset(&recv_buf, 0, sizeof(recv_buf));
+    bytes = ocall_recv(fd_ret, recv_buf, MAX_RECV_BUF, NULL, NULL, NULL, NULL);
+
+    memcpy(&recv_key, &recv_buf, sizeof(sgx_aes_gcm_128bit_key_t));
+    if (bytes < 0) {
+        log_error("ocall_recv failed: bytes = %d)\n", bytes);
+    }
+    else {
+        log_error("Msg3 received...\n");
+        log_error("Key: %s\n", ALLOCA_BYTES2HEXSTR(recv_key));
+    }
+
+    log_error("LA finished.\n");
     return 0;
 
 };
