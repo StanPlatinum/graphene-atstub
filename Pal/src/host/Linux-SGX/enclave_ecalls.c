@@ -59,6 +59,16 @@ static void my_print_report(sgx_report_t* r) {
     log_error("  mac:         %s\n", ALLOCA_BYTES2HEXSTR(r->mac));
 }
 
+int report_match(char *a, char *b) {
+    //if we verify mr_signer, n=64
+    if (strncmp(a, b, 64) == 0) {
+        return 0;
+    }
+    else {
+        return -1;
+    }
+}
+
 int la_init(void) {
 
     log_error("Connecting LAS...\n");
@@ -140,6 +150,13 @@ int la_init(void) {
         return -PAL_ERROR_DENIED;
     }
     my_print_report(&report);
+    if (report_match(ALLOCA_BYTES2HEXSTR(recv_report.body.mr_signer.m), 
+            ALLOCA_BYTES2HEXSTR(report.body.mr_signer.m))) {
+        log_error("Not match! Reject!\n");
+    }
+    else {
+        log_error("Mr_signer Verified!\n");
+    }
 
     /* Send: report[A -> B] */
 
