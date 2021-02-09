@@ -104,14 +104,15 @@ int la_init(void) {
     int len = sizeof(sgx_target_info_t);
     char send_buf[MAX_SEND_BUF] = {0};
     memcpy(&send_buf, &target_info, len);
-    log_error("Msg0 actual length: %d\n", len);
-    log_error("target_info's mr_enclave: %s\n", ALLOCA_BYTES2HEXSTR(target_info.mr_enclave.m));
-    log_error("target_info's attr.flag: %016lx\n", target_info.attributes.flags);
-    log_error("target_info's attr.xfrm: %016lx\n", target_info.attributes.xfrm);
+    // log_error("Msg0 actual length: %d\n", len);
+    // log_error("target_info's mr_enclave: %s\n", ALLOCA_BYTES2HEXSTR(target_info.mr_enclave.m));
+    // log_error("target_info's attr.flag: %016lx\n", target_info.attributes.flags);
+    // log_error("target_info's attr.xfrm: %016lx\n", target_info.attributes.xfrm);
   
     bytes = ocall_send(fd_ret, send_buf, MAX_SEND_BUF, NULL, 0, NULL, 0);
     if (bytes < 0) {
         log_error("ocall_send failed: bytes = %d)\n", bytes);
+        return -1;
     }
     else {
         log_error("Msg0 sent.\n");
@@ -130,6 +131,7 @@ int la_init(void) {
 
     if (bytes < 0) {
         log_error("ocall_recv failed: bytes = %d)\n", bytes);
+        return -2;
     }
     else {
         log_error("Msg1 received...\n");
@@ -153,6 +155,7 @@ int la_init(void) {
     if (report_match(ALLOCA_BYTES2HEXSTR(recv_report.body.mr_signer.m), 
             ALLOCA_BYTES2HEXSTR(report.body.mr_signer.m))) {
         log_error("Not match! Reject!\n");
+        return -3;
     }
     else {
         log_error("Mr_signer Verified!\n");
@@ -166,6 +169,7 @@ int la_init(void) {
     bytes = ocall_send(fd_ret, send_buf, MAX_SEND_BUF, NULL, 0, NULL, 0);
     if (bytes < 0) {
         log_error("ocall_send failed: bytes = %d)\n", bytes);
+        return -4;
     }
     else {
         log_error("Msg2 sent. This side of attestation, done.\n");
@@ -181,12 +185,14 @@ int la_init(void) {
     memcpy(&recv_key, &recv_buf, sizeof(sgx_aes_gcm_128bit_key_t));
     if (bytes < 0) {
         log_error("ocall_recv failed: bytes = %d)\n", bytes);
+        return -5;
     }
     else {
         log_error("Msg3 received...\n");
         log_error("Key: %s\n", ALLOCA_BYTES2HEXSTR(recv_key));
     }
 
+    ocall_close(fd_ret);
     log_error("LA finished.\n");
     return 0;
 
@@ -236,7 +242,8 @@ void handle_ecall(long ecall_index, void* ecall_args, void* exit_target, void* e
     SET_ENCLAVE_TLS(untrusted_area_cache.in_use, 0UL);
 
     int la_rv = la_init();
-    if (la_rv) {
+    if (la_rv < 0) {
+        //WL: could check the return value for debugging
         log_error("LA init failed!\n");
     }
 
