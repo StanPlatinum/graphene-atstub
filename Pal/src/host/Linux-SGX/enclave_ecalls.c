@@ -3,6 +3,9 @@
 #include <stdalign.h>
 
 #include "api.h"
+
+#include "pal_crypto.h"
+
 #include "ecall_types.h"
 #include "ocall_types.h"
 #include "pal_internal.h"
@@ -67,6 +70,42 @@ int report_match(char *a, char *b) {
     else {
         return -1;
     }
+}
+
+
+int dh_init(void) {
+
+    uint8_t pub[DH_SIZE]   __attribute__((aligned(DH_SIZE)));
+    uint8_t agree[DH_SIZE] __attribute__((aligned(DH_SIZE)));
+    PAL_NUM pubsz, agreesz;
+    LIB_DH_CONTEXT context;
+    int64_t bytes;
+    int64_t ret;
+
+    ret = lib_DhInit(&context);
+    if (ret < 0) {
+        log_error("Key Exchange: DH Init failed: %ld\n", ret);
+        goto out_no_final;
+    }
+
+    pubsz = sizeof pub;
+    ret = lib_DhCreatePublic(&context, pub, &pubsz);
+    if (ret < 0) {
+        log_error("Key Exchange: DH CreatePublic failed: %ld\n", ret);
+        goto out;
+    }
+
+    assert(pubsz > 0 && pubsz <= DH_SIZE);
+    if (pubsz < DH_SIZE) {
+        /* Insert leading zero bytes if necessary. These values are big-
+         * endian, so we either need to know the length of the bignum or
+         * zero-pad at the beginning instead of the end. This code chooses
+         * to do the latter. */
+        memmove(pub + (DH_SIZE - pubsz), pub, pubsz);
+        memset(pub, 0, DH_SIZE - pubsz);
+    }
+
+    return 0;
 }
 
 int la_init(void) {
