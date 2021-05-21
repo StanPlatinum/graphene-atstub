@@ -166,8 +166,9 @@ out_no_final:
 int la_init(void) {
 
     log_error("Connecting LAS...\n");
+    //WL: the following address should be configurable
+    struct sockaddr_un addr = {AF_UNIX, "/home/box/LA.socket"};
 
-    struct sockaddr_un addr = {AF_UNIX, "/u/weijliu/LA.socket"};
     struct sockopt sock_options;
     unsigned int addrlen = sizeof(struct sockaddr_un);
     int fd_ret = ocall_connect(AF_UNIX, SOCK_STREAM, 0, /*ipv6_v6only=*/0,
@@ -184,7 +185,7 @@ int la_init(void) {
     }
     else {
         log_error("key 15th: %d\n", key[15]);
-        return -7;
+        // return -7;
     }
 
     //WL: proceed with LA protocol
