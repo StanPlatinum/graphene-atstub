@@ -73,7 +73,7 @@ int report_match(char *a, char *b) {
 }
 
 
-int dh_init(PAL_SESSION_KEY* key) {
+int dh_init(int stream, PAL_SESSION_KEY* key) {
 
     uint8_t pub[DH_SIZE]   __attribute__((aligned(DH_SIZE)));
     uint8_t agree[DH_SIZE] __attribute__((aligned(DH_SIZE)));
@@ -104,10 +104,16 @@ int dh_init(PAL_SESSION_KEY* key) {
         memmove(pub + (DH_SIZE - pubsz), pub, pubsz);
         memset(pub, 0, DH_SIZE - pubsz);
     }
+    
+    log_error("start to write the socket...\n");
 
     for (bytes = 0, ret = 0; bytes < DH_SIZE; bytes += ret) {
         //WL: write the socket
-        // ret = _DkStreamWrite(stream, 0, DH_SIZE - bytes, pub + bytes, NULL, 0);
+        //WL: seems not work if we using ocall_send()
+        //WL: ocall_send function signature:
+        //WL: ssize_t ocall_send(int sockfd, const void* buf, size_t count, const struct sockaddr* addr,
+        //    size_t addrlen, void* control, size_t controllen)
+        ret = _DkStreamWrite(stream, 0, DH_SIZE - bytes, pub + bytes, NULL, 0);
         if (ret < 0) {
             if (ret == -PAL_ERROR_INTERRUPTED || ret == -PAL_ERROR_TRYAGAIN) {
                 ret = 0;
@@ -118,9 +124,11 @@ int dh_init(PAL_SESSION_KEY* key) {
         }
     }
 
+    log_error("start to read the stream...\n");
+
     for (bytes = 0, ret = 0; bytes < DH_SIZE; bytes += ret) {
         //WL: read from socket
-        // ret = _DkStreamRead(stream, 0, DH_SIZE - bytes, pub + bytes, NULL, 0);
+        ret = _DkStreamRead(stream, 0, DH_SIZE - bytes, pub + bytes, NULL, 0);
         if (ret < 0) {
             if (ret == -PAL_ERROR_INTERRUPTED || ret == -PAL_ERROR_TRYAGAIN) {
                 ret = 0;
@@ -179,7 +187,7 @@ int la_init(void) {
     }
 
     PAL_SESSION_KEY key = {0};
-    int dh_rv = dh_init(&key);
+    int dh_rv = dh_init(fd_ret, &key);
     if (dh_rv != 0) {
         log_error("DH init failed\n");
     }
