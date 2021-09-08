@@ -73,7 +73,7 @@ int report_match(char *a, char *b) {
 }
 
 
-int dh_init(void) {
+int dh_init(int stream, PAL_SESSION_KEY* key) {
 
     uint8_t pub[DH_SIZE]   __attribute__((aligned(DH_SIZE)));
     uint8_t agree[DH_SIZE] __attribute__((aligned(DH_SIZE)));
@@ -104,25 +104,100 @@ int dh_init(void) {
         memmove(pub + (DH_SIZE - pubsz), pub, pubsz);
         memset(pub, 0, DH_SIZE - pubsz);
     }
+    
+    log_error("start to write the socket...\n");
 
-    return 0;
+    for (bytes = 0, ret = 0; bytes < DH_SIZE; bytes += ret) {
+        //WL: write the socket
+        //WL: seems not work if we using ocall_send()
+        //WL: ocall_send function signature:
+        //WL: ssize_t ocall_send(int sockfd, const void* buf, size_t count, const struct sockaddr* addr,
+        //    size_t addrlen, void* control, size_t controllen)
+        ret = _DkStreamWrite(stream, 0, DH_SIZE - bytes, pub + bytes, NULL, 0);
+        if (ret < 0) {
+            if (ret == -PAL_ERROR_INTERRUPTED || ret == -PAL_ERROR_TRYAGAIN) {
+                ret = 0;
+                continue;
+            }
+            log_error("Failed to exchange the secret key via RPC: %ld\n", ret);
+            goto out;
+        }
+    }
+
+    log_error("start to read the stream...\n");
+
+    for (bytes = 0, ret = 0; bytes < DH_SIZE; bytes += ret) {
+        //WL: read from socket
+        ret = _DkStreamRead(stream, 0, DH_SIZE - bytes, pub + bytes, NULL, 0);
+        if (ret < 0) {
+            if (ret == -PAL_ERROR_INTERRUPTED || ret == -PAL_ERROR_TRYAGAIN) {
+                ret = 0;
+                continue;
+            }
+            log_error("Failed to exchange the secret key via RPC: %ld\n", ret);
+            goto out;
+        }
+    }
+
+    agreesz = sizeof agree;
+    ret = lib_DhCalcSecret(&context, pub, DH_SIZE, agree, &agreesz);
+    if (ret < 0) {
+        log_error("Key Exchange: DH CalcSecret failed: %ld\n", ret);
+        goto out;
+    }
+
+    assert(agreesz > 0 && agreesz <= sizeof agree);
+
+    /*
+     * Using SHA256 as a KDF to convert the 128-byte DH secret to a 256-bit AES key.
+     * According to the NIST recommendation:
+     * https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-56Cr1.pdf,
+     * a key derivation function (KDF) can be a secure hash function (e.g., SHA-256),
+     * HMAC, or KMAC.
+     */
+    LIB_SHA256_CONTEXT sha;
+    if ((ret = lib_SHA256Init(&sha)) < 0 ||
+        (ret = lib_SHA256Update(&sha, agree, agreesz)) < 0 ||
+        (ret = lib_SHA256Final(&sha, (uint8_t*)key)) < 0) {
+        log_error("Failed to derive the session key: %ld\n", ret);
+        goto out;
+    }
+
+    log_debug("Key exchange succeeded: %s\n", ALLOCA_BYTES2HEXSTR(*key));
+    ret = 0;
+out:
+    lib_DhFinal(&context);
+out_no_final:
+    return ret;
 }
 
 int la_init(void) {
 
     log_error("Connecting LAS...\n");
+    //WL: the following address should be configurable
+    struct sockaddr_un addr = {AF_UNIX, "/home/box/LA.socket"};
 
-    struct sockaddr_un addr = {AF_UNIX, "/u/weijliu/LA.socket"};
     struct sockopt sock_options;
     unsigned int addrlen = sizeof(struct sockaddr_un);
     int fd_ret = ocall_connect(AF_UNIX, SOCK_STREAM, 0, /*ipv6_v6only=*/0,
                         (const struct sockaddr*)&addr, addrlen, NULL, NULL, &sock_options);
     if (fd_ret < 0) {
         log_error("ocall_connect failed: fd_ret = %d)\n", fd_ret);
+        return -6;
     }
 
-    /* Send: targetinfo[A] */
+    PAL_SESSION_KEY key = {0};
+    int dh_rv = dh_init(fd_ret, &key);
+    if (dh_rv != 0) {
+        log_error("DH init failed\n");
+    }
+    else {
+        log_error("key 15th: %d\n", key[15]);
+        // return -7;
+    }
 
+    //WL: proceed with LA protocol
+    /* Send: targetinfo[A] */
     log_error("Sending msg0...\n");
 
     __sgx_mem_aligned sgx_target_info_t target_info;
