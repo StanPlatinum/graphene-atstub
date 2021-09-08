@@ -1,5 +1,3 @@
-sudo sysctl vm.mmap_min_addr=0
-
 cd .
 export GRAPHENE_DIR=$PWD
 
